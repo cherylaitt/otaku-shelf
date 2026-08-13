@@ -1,0 +1,62 @@
+{
+  "expo": {
+    "name": "otaku-shelf",
+    "slug": "otaku-shelf",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.chery.laitt.otaku-shelf"
+    },
+    "android": {
+      "package": "com.chery.laitt.otakushelf",
+      "versionCode": 2,
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.CAMERA"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-sqlite",
+      "expo-image",
+      "@react-native-community/datetimepicker",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Otaku Shelf uses your photo library so you can attach pictures of your goods to items in your collection.",
+          "cameraPermission": "Otaku Shelf uses your camera so you can photograph goods when adding them to your collection."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Otaku Shelf uses your camera to scan barcodes when adding items."
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "e4fbdabe-9ea1-445a-8a1c-e702f4914351"
+      }
+    },
+    "owner": "chery.laitt",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/e4fbdabe-9ea1-445a-8a1c-e702f4914351"
+    }
+  }
+}
