@@ -52,18 +52,18 @@ const PAPER_BINDER_VARIANTS = singleTexturePaperBackground(require('../../../ass
 const GREEN_PAPER_VARIANTS = singleTexturePaperBackground(require('../../../assets/environments/green-paper.png'));
 const LAVENDER_PAPER_VARIANTS = singleTexturePaperBackground(require('../../../assets/environments/lavender-paper.png'));
 
-// Placeholder measurements — top compartment shorter than the middle/lower
-// ones, as real shelf photography/renders typically look. All three
-// presets currently reuse the same underlying image (there's no genuinely
-// distinct per-row-count art yet), so these approximate what hand-measured
-// anchors would look like on one generic shelf photo. To add real
-// row-specific art, give each preset its OWN `image:` (see the
-// `figureShelfVariants`/`FigureRowArt` doc comments above) plus anchors
-// measured from that specific file.
+// Measured from each image's actual pixels (a brightness-peak scan down
+// the interior column, isolating each shelf board's lit top edge from the
+// darker interior shadow behind it) rather than guessed — see the
+// analysis notes in the PR/chat history if these ever need re-deriving
+// after an art update. The LAST value in each array is the cabinet's
+// floor (where the base trim begins), which is the bottom row's actual
+// resting surface, not a shelf board — every array intentionally has one
+// fewer literal "board" than it has rows for exactly this reason.
 const CLASSIC_SHELF_VARIANTS = figureShelfVariants({
-  3: { image: require('../../../assets/environments/classic-shelf.png'), shelfAnchorY: [0.38, 0.68, 0.94] },
-  4: { image: require('../../../assets/environments/classic-shelf-4rows.png'), shelfAnchorY: [0.27, 0.49, 0.7, 0.9] },
-  5: { image: require('../../../assets/environments/classic-shelf.png'), shelfAnchorY: [0.26, 0.45, 0.63, 0.8, 0.96] },
+  3: { image: require('../../../assets/environments/classic-shelf-3rows.png'), shelfAnchorY: [0.37, 0.645, 0.9] },
+  4: { image: require('../../../assets/environments/classic-shelf-4rows.png'), shelfAnchorY: [0.293, 0.515, 0.715, 0.919] },
+  5: { image: require('../../../assets/environments/classic-shelf.png'), shelfAnchorY: [0.241, 0.425, 0.601, 0.769, 0.937] },
 });
 
 /**

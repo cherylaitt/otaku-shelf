@@ -66,7 +66,7 @@ export function AddEditItemScreen() {
   const [purchaseDate, setPurchaseDate] = useState<number | null>(existingItem?.purchaseDate ?? null);
   const [notes, setNotes] = useState(existingItem?.notes ?? '');
   const [tags, setTags] = useState<string[]>(existingItem?.tags ?? []);
-  const [status, setStatus] = useState<ItemStatus>(existingItem?.status ?? 'wishlist');
+  const [status, setStatus] = useState<ItemStatus>(existingItem?.status ?? 'owned');
   const [barcodeCode, setBarcodeCode] = useState<string | null>(existingItem?.barcodeCode ?? null);
   const [justScanned, setJustScanned] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
