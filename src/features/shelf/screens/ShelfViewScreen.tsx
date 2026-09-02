@@ -18,13 +18,13 @@ import type { RouteProp } from '@react-navigation/native';
 import { RootStackParamList } from '../../../navigation/types';
 import { useGroupsStore } from '../../groups/store/useGroupsStore';
 import { useItemsStore } from '../../items/store/useItemsStore';
-import { useEnvironmentsStore } from '../../../shared/store/useEnvironmentsStore';
 import { ScreenContainer } from '../../../shared/components/ScreenContainer';
 import { CategoryPill } from '../../../shared/components/CategoryPill';
 import { Button } from '../../../shared/components/Button';
 import { ShelfGrid } from '../components/ShelfGrid';
 import { computeTotalPages } from '../../../shared/utils/gridLayout';
 import { computeCoverVerticalCrop, mapImageYToContainerY, resolveShelfBackground } from '../../../shared/utils/shelfBackground';
+import { BACKGROUND_COLOR_BY_CATEGORY } from '../../../shared/config/shelfBackgrounds';
 import { colors, radius, spacing, typography } from '../../../shared/theme/theme';
 import { Item } from '../../../shared/types/models';
 
@@ -41,8 +41,6 @@ export function ShelfViewScreen() {
   const items = useItemsStore((s) => s.items);
   const refreshItems = useItemsStore((s) => s.refresh);
   const placeInSlot = useItemsStore((s) => s.placeInSlot);
-  const environments = useEnvironmentsStore((s) => s.environments);
-  const refreshEnvironments = useEnvironmentsStore((s) => s.refresh);
 
   const [assignTarget, setAssignTarget] = useState<{ row: number; col: number } | null>(null);
   const [pageSize, setPageSize] = useState({ width: 0, height: 0 });
@@ -53,28 +51,27 @@ export function ShelfViewScreen() {
     useCallback(() => {
       refreshGroups();
       refreshItems();
-      refreshEnvironments();
-    }, [refreshGroups, refreshItems, refreshEnvironments])
+    }, [refreshGroups, refreshItems])
   );
 
   useLayoutEffect(() => {
     navigation.setOptions({ title: group?.name ?? 'Shelf' });
   }, [navigation, group?.name]);
 
-  const env = useMemo(
-    () => environments.find((e) => e.id === group?.activeEnvironmentId) ?? null,
-    [environments, group?.activeEnvironmentId]
+  // Fixed per category (no user-facing style choice) — but for `figure`
+  // groups this still swaps the FULL background asset (image + anchors)
+  // authored for this group's exact row count whenever it's resized, not
+  // just an overlay grid on a stretched image.
+  const background = useMemo(
+    () => (group ? resolveShelfBackground(group.category, group.rows) : null),
+    [group?.category, group?.rows]
   );
-
-  // Swaps in the FULL background asset (image + anchors) authored for this
-  // group's exact row count — not just an overlay grid on a stretched
-  // image — so resizing rows also resizes/re-anchors the art itself.
-  const background = useMemo(() => resolveShelfBackground(env, group?.rows ?? 1), [env, group?.rows]);
 
   // shelfAnchorY is authored relative to the FULL source image; map it onto
   // the actually-rendered (possibly cover-cropped) page bounds once we know
   // both the image's natural size and the measured page size.
   const rowAnchorsY = useMemo(() => {
+    if (!background) return [];
     if (!background.imageUri || !background.imageWidth || !background.imageHeight || pageSize.width === 0 || pageSize.height === 0) {
       return background.anchorsY;
     }
@@ -167,7 +164,6 @@ export function ShelfViewScreen() {
           >
             <Text style={styles.iconButtonText}>⚙️</Text>
           </Pressable>
-          <Button label="Skin Locker" variant="secondary" onPress={() => navigation.navigate('SkinLocker', { groupId })} />
         </View>
       </View>
 
@@ -187,9 +183,12 @@ export function ShelfViewScreen() {
               );
               return (
                 <View
-                  style={[styles.stage, { width: pageWidth, backgroundColor: env?.backgroundColor ?? colors.slotEmpty }]}
+                  style={[
+                    styles.stage,
+                    { width: pageWidth, backgroundColor: BACKGROUND_COLOR_BY_CATEGORY[group.category] ?? colors.slotEmpty },
+                  ]}
                 >
-                  {background.imageUri ? (
+                  {background?.imageUri ? (
                     // "cover" so the art fills the fixed-size grid without empty
                     // letterboxing or visible distortion — "stretch" would warp
                     // the texture (especially noticeable on very wide/tall
@@ -297,13 +296,18 @@ const styles = StyleSheet.create({
   iconButtonText: {
     fontSize: 16,
   },
+  // Edge-to-edge on purpose (no marginHorizontal, no borderRadius): this is
+  // the shelf/binder background itself, not a card floating over the
+  // screen bg — any margin or rounded corner here would show the dark
+  // ScreenContainer bg peeking through as an unwanted void around the art.
+  // Vertically it's bounded only by `topBar` above and `footerRow` (and
+  // `pageIndicatorRow`, when present) below via normal flex flow — flex:1
+  // already claims 100% of whatever's left between them, no separate gap.
   stageOuter: {
     flex: 1,
-    marginHorizontal: spacing.lg,
   },
   stage: {
     flex: 1,
-    borderRadius: radius.lg,
     overflow: 'hidden',
   },
   // No padding/centering here on purpose — `rowAnchorsY` is computed

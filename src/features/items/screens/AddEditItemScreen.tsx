@@ -13,7 +13,10 @@
  * "have I already logged this exact barcode?"), with zero network calls.
  * Manual entry — helped along by local, offline autocomplete on
  * Series/Franchise and Tags drawn from the user's own past entries — is the
- * one, fully-supported path for populating item details.
+ * one, fully-supported path for populating item details. Photo comes first
+ * (with an optional on-device "Remove Background" step, see
+ * backgroundRemoval.ts), Barcode is a secondary, skippable section below
+ * it — reinforcing that scanning is a shortcut, never a requirement.
  */
 import React, { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { Alert, Image, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -36,6 +39,7 @@ import { SlotPickerModal } from '../../shelf/components/SlotPickerModal';
 import { colors, radius, spacing, typography } from '../../../shared/theme/theme';
 import { CategoryMismatchError, ItemStatus, ItemType } from '../../../shared/types/models';
 import { imageService } from '../../../shared/services/imageService';
+import { backgroundRemovalService } from '../../../shared/services/backgroundRemoval';
 import { itemsRepository } from '../../../shared/db/repositories/itemsRepository';
 import { formatDate } from '../../../shared/utils/format';
 
@@ -60,6 +64,15 @@ export function AddEditItemScreen() {
   const [name, setName] = useState(existingItem?.name ?? '');
   const [seriesFranchise, setSeriesFranchise] = useState(existingItem?.seriesFranchise ?? '');
   const [imageUri, setImageUri] = useState<string | null>(existingItem?.imageUri ?? null);
+  // The photo as originally picked/taken, before any background removal —
+  // kept separately so "Undo" can always get back to it, even after a
+  // successful cutout replaces `imageUri`. For an existing item being
+  // edited, its current saved photo IS the "original" as far as this
+  // screen is concerned (we don't retroactively know whether it was itself
+  // a past cutout).
+  const [originalImageUri, setOriginalImageUri] = useState<string | null>(existingItem?.imageUri ?? null);
+  const [isRemovingBackground, setIsRemovingBackground] = useState(false);
+  const [backgroundRemovalNote, setBackgroundRemovalNote] = useState<string | null>(null);
   const [purchaseAmount, setPurchaseAmount] = useState(
     existingItem?.purchaseAmount != null ? String(existingItem.purchaseAmount) : ''
   );
@@ -114,18 +127,52 @@ export function AddEditItemScreen() {
 
   const handlePickCamera = async () => {
     const result = await imageService.pickFromCamera();
-    if (result.status === 'success') setImageUri(result.uri);
-    else if (result.status === 'permission-denied') {
+    if (result.status === 'success') {
+      setImageUri(result.uri);
+      setOriginalImageUri(result.uri);
+      setBackgroundRemovalNote(null);
+    } else if (result.status === 'permission-denied') {
       Alert.alert('Camera Access Needed', 'Enable camera access in Settings to take photos of your items.');
     }
   };
 
   const handlePickGallery = async () => {
     const result = await imageService.pickFromGallery();
-    if (result.status === 'success') setImageUri(result.uri);
-    else if (result.status === 'permission-denied') {
+    if (result.status === 'success') {
+      setImageUri(result.uri);
+      setOriginalImageUri(result.uri);
+      setBackgroundRemovalNote(null);
+    } else if (result.status === 'permission-denied') {
       Alert.alert('Photo Access Needed', 'Enable photo library access in Settings to choose images.');
     }
+  };
+
+  // On-device only (Vision on iOS, ML Kit on Android — see
+  // backgroundRemoval.ts) — no network call, no cloud API, works offline.
+  // The cutout replaces `imageUri` (what actually gets saved) but
+  // `originalImageUri` is left untouched so "Use Original Instead" always
+  // has something to revert to.
+  const handleRemoveBackground = async () => {
+    if (!originalImageUri) return;
+    setIsRemovingBackground(true);
+    setBackgroundRemovalNote(null);
+    try {
+      const result = await backgroundRemovalService.removeBackground(originalImageUri);
+      if (result.status === 'success') {
+        setImageUri(result.uri);
+      } else if (result.status === 'unavailable') {
+        setBackgroundRemovalNote("Couldn't find a clear subject to cut out — keeping the original photo.");
+      } else {
+        setBackgroundRemovalNote('Background removal failed — keeping the original photo.');
+      }
+    } finally {
+      setIsRemovingBackground(false);
+    }
+  };
+
+  const handleUseOriginalPhoto = () => {
+    setImageUri(originalImageUri);
+    setBackgroundRemovalNote(null);
   };
 
   const onChangeDate = (event: DateTimePickerEvent, selectedDate?: Date) => {
@@ -204,6 +251,28 @@ export function AddEditItemScreen() {
             <Button label="Take Photo" variant="secondary" onPress={handlePickCamera} style={styles.photoButton} />
             <Button label="Choose from Gallery" variant="secondary" onPress={handlePickGallery} style={styles.photoButton} />
           </View>
+
+          {imageUri && backgroundRemovalService.isAvailable() ? (
+            <View style={styles.bgRemovalRow}>
+              {imageUri === originalImageUri ? (
+                <Button
+                  label="✂️ Remove Background"
+                  variant="ghost"
+                  loading={isRemovingBackground}
+                  onPress={handleRemoveBackground}
+                  style={styles.bgRemovalButton}
+                />
+              ) : (
+                <Button
+                  label="Use Original Instead"
+                  variant="ghost"
+                  onPress={handleUseOriginalPhoto}
+                  style={styles.bgRemovalButton}
+                />
+              )}
+            </View>
+          ) : null}
+          {backgroundRemovalNote ? <Text style={styles.bgRemovalNote}>{backgroundRemovalNote}</Text> : null}
         </View>
 
         <View style={styles.barcodeSection}>
@@ -367,6 +436,19 @@ const styles = StyleSheet.create({
   },
   photoButton: {
     flex: 1,
+  },
+  bgRemovalRow: {
+    marginTop: spacing.sm,
+    alignItems: 'flex-start',
+  },
+  bgRemovalButton: {
+    paddingHorizontal: 0,
+    paddingVertical: spacing.xs,
+  },
+  bgRemovalNote: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    marginTop: 2,
   },
   barcodeSection: {
     gap: spacing.sm,

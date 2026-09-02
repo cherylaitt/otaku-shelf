@@ -12,7 +12,6 @@ interface GroupsState {
   deleteGroup: (id: string) => void;
   updateGroupDetails: (id: string, patch: { name?: string; description?: string | null }) => void;
   resizeGroup: (id: string, rows: number, columns: number) => Group;
-  setActiveEnvironment: (groupId: string, environmentId: string) => void;
   getGroupById: (id: string) => Group | undefined;
 }
 
@@ -53,11 +52,6 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
     set((s) => ({ groups: s.groups.map((g) => (g.id === id ? updated : g)) }));
     useItemsStore.getState().refresh();
     return updated;
-  },
-
-  setActiveEnvironment: (groupId, environmentId) => {
-    const updated = groupsRepository.setActiveEnvironment(groupId, environmentId);
-    set((s) => ({ groups: s.groups.map((g) => (g.id === groupId ? updated : g)) }));
   },
 
   getGroupById: (id) => get().groups.find((g) => g.id === id),

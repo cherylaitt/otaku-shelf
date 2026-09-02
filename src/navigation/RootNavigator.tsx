@@ -5,7 +5,6 @@ import { MainTabNavigator } from './MainTabNavigator';
 import { CreateGroupScreen } from '../features/groups/screens/CreateGroupScreen';
 import { ResizeGroupLayoutScreen } from '../features/groups/screens/ResizeGroupLayoutScreen';
 import { ShelfViewScreen } from '../features/shelf/screens/ShelfViewScreen';
-import { SkinLockerScreen } from '../features/shelf/screens/SkinLockerScreen';
 import { AddEditItemScreen } from '../features/items/screens/AddEditItemScreen';
 import { ItemDetailScreen } from '../features/items/screens/ItemDetailScreen';
 import { BarcodeScannerScreen } from '../features/items/screens/BarcodeScannerScreen';
@@ -31,7 +30,6 @@ export function RootNavigator() {
         options={{ presentation: 'modal', title: 'Resize Layout' }}
       />
       <Stack.Screen name="ShelfView" component={ShelfViewScreen} options={{ title: 'Shelf' }} />
-      <Stack.Screen name="SkinLocker" component={SkinLockerScreen} options={{ title: 'Skin Locker' }} />
       <Stack.Screen name="AddEditItem" component={AddEditItemScreen} options={{ presentation: 'modal', title: 'Item' }} />
       <Stack.Screen name="ItemDetail" component={ItemDetailScreen} options={{ title: 'Item' }} />
       <Stack.Screen

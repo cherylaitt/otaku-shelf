@@ -10,6 +10,7 @@ import { SegmentedControl } from '../../../shared/components/SegmentedControl';
 import { TextField } from '../../../shared/components/TextField';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import { ItemListRow } from '../components/ItemListRow';
+import { BannerAdSlot } from '../../../shared/components/BannerAdSlot';
 import { colors, spacing, typography } from '../../../shared/theme/theme';
 import { ITEM_STATUSES, ITEM_STATUS_LABELS, ItemStatus } from '../../../shared/types/models';
 
@@ -118,28 +119,36 @@ export function InventoryScreen() {
         />
       </View>
 
-      {filtered.length === 0 ? (
-        <EmptyState
-          icon="📦"
-          title={`No ${ITEM_STATUS_LABELS[statusTab].toLowerCase()} items`}
-          subtitle="Try a different filter, or add a new item from a group's Shelf View."
-        />
-      ) : (
-        <FlatList
-          data={filtered}
-          keyExtractor={(i) => i.id}
-          contentContainerStyle={styles.list}
-          renderItem={({ item }) => (
-            <ItemListRow
-              item={item}
-              groupName={groupNameById.get(item.groupId) ?? 'Unknown group'}
-              onPress={() => navigation.navigate('ItemDetail', { itemId: item.id })}
-              onLongPress={() => handleLongPress(item.id, item.name)}
-            />
-          )}
-          ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
-        />
-      )}
+      <View style={styles.listArea}>
+        {filtered.length === 0 ? (
+          <EmptyState
+            icon="📦"
+            title={`No ${ITEM_STATUS_LABELS[statusTab].toLowerCase()} items`}
+            subtitle="Try a different filter, or add a new item from a group's Shelf View."
+          />
+        ) : (
+          <FlatList
+            data={filtered}
+            keyExtractor={(i) => i.id}
+            contentContainerStyle={styles.list}
+            renderItem={({ item }) => (
+              <ItemListRow
+                item={item}
+                groupName={groupNameById.get(item.groupId) ?? 'Unknown group'}
+                onPress={() => navigation.navigate('ItemDetail', { itemId: item.id })}
+                onLongPress={() => handleLongPress(item.id, item.name)}
+              />
+            )}
+            ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
+          />
+        )}
+      </View>
+
+      {/* Only the Inventory List / browse screen shows a banner — see
+          README "Ad monetization". `listArea` above is `flex: 1`, so this
+          slot's reserved space is simply subtracted from it by flexbox;
+          there's no separate "with banner" layout to maintain. */}
+      <BannerAdSlot />
     </ScreenContainer>
   );
 }
@@ -167,6 +176,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   searchInput: {
+    flex: 1,
+  },
+  listArea: {
     flex: 1,
   },
   list: {

@@ -24,9 +24,7 @@ export function markDatabaseInitialized(): void {
 /** Wipes all app data. Used by Settings > Reset. Keeps the schema intact. */
 export function resetAllData(): void {
   db.withTransactionSync(() => {
-    db.execSync('DELETE FROM gacha_pulls;');
     db.execSync('DELETE FROM items;');
     db.execSync('DELETE FROM item_groups;');
-    db.execSync('DELETE FROM environments;');
   });
 }

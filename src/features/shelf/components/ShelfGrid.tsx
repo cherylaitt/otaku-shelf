@@ -58,8 +58,38 @@ export function ShelfGrid({
   }
 
   const { width: containerWidth, height: containerHeight } = size;
-  const slotSize = (containerWidth - GAP * (cols - 1)) / cols;
   const anchorsY = rowAnchorsY && rowAnchorsY.length === rows ? rowAnchorsY : evenRowAnchors(rows);
+
+  // A slot's size can't just be "how wide is a column" (`colWidth` below) —
+  // shelf compartments between two `shelfAnchorY` lines are frequently
+  // *shorter* than a column is wide (few columns + many rows is the worst
+  // case: wide columns, short compartments), and a slot that's wider than
+  // its compartment is tall would poke up through the shelf line above it
+  // instead of resting cleanly on the one below. So the real slot size is
+  // capped by whichever row has the least headroom, computed from the gap
+  // between consecutive anchors (or the container top, for row 0) — not
+  // just from `containerWidth`/`cols`. `SLOT_FILL` leaves a little
+  // clearance above each item (real objects don't touch the shelf above
+  // them either), and also keeps a same-size slot from landing exactly
+  // flush with both the anchor below AND the one above at once.
+  const colWidth = (containerWidth - GAP * (cols - 1)) / cols;
+  let minRowHeight = Infinity;
+  for (let r = 0; r < rows; r++) {
+    const top = r === 0 ? 0 : anchorsY[r - 1] * containerHeight;
+    const bottom = anchorsY[r] * containerHeight;
+    minRowHeight = Math.min(minRowHeight, bottom - top);
+  }
+  const SLOT_FILL = 0.9;
+  const slotSize = Math.max(1, Math.min(colWidth, minRowHeight * SLOT_FILL));
+
+  // Columns are still evenly divided (per spec, only row anchoring is
+  // non-uniform) — but if `slotSize` came out smaller than `colWidth`
+  // (height-constrained), the grid's total footprint is now narrower than
+  // the container, so re-center it horizontally rather than leaving it
+  // jammed against the left edge with dead space on the right.
+  const gridWidth = cols * slotSize + (cols - 1) * GAP;
+  const offsetX = Math.max(0, (containerWidth - gridWidth) / 2);
+  const colLeft = (col: number) => offsetX + col * (slotSize + GAP);
   const rowTop = (row: number) => anchorsY[row] * containerHeight - slotSize;
 
   const occupied = new Map<string, Item>();
@@ -90,7 +120,7 @@ export function ShelfGrid({
               {
                 width: slotSize,
                 height: slotSize,
-                left: col * (slotSize + GAP),
+                left: colLeft(col),
                 top: rowTop(row),
               },
             ]}
@@ -110,6 +140,7 @@ export function ShelfGrid({
             slotSize={slotSize}
             gap={GAP}
             cols={cols}
+            gridOffsetX={offsetX}
             anchorsY={anchorsY}
             containerHeight={containerHeight}
             onDrop={onDropItem}
@@ -126,14 +157,26 @@ interface DraggableItemThumbProps {
   slotSize: number;
   gap: number;
   cols: number;
+  /** Horizontal re-centering offset applied when `slotSize` came out narrower than a full column (see `offsetX` in `ShelfGrid`) — 0 in the common, unconstrained case. */
+  gridOffsetX: number;
   anchorsY: number[];
   containerHeight: number;
   onDrop: (itemId: string, row: number, col: number) => void;
   onPress: (item: Item) => void;
 }
 
-/** Finds the row whose anchor line sits closest to a dropped item's bottom edge (`bottomY`), since anchors aren't evenly spaced and can't be inverted with simple division. */
+/**
+ * Finds the row whose anchor line sits closest to a dropped item's bottom
+ * edge (`bottomY`), since anchors aren't evenly spaced and can't be
+ * inverted with simple division. Called synchronously from inside the pan
+ * gesture's `.onEnd()` worklet (UI thread) — needs its own `'worklet'`
+ * directive, since react-native-worklets only auto-compiles the gesture
+ * callback itself, not plain helper functions it calls; without this it
+ * throws "Tried to synchronously call a Remote Function" instead of
+ * running on the UI thread.
+ */
 function nearestAnchorRow(bottomY: number, anchorsY: number[], containerHeight: number): number {
+  'worklet';
   let best = 0;
   let bestDist = Infinity;
   for (let r = 0; r < anchorsY.length; r++) {
@@ -152,17 +195,18 @@ function DraggableItemThumb({
   slotSize,
   gap,
   cols,
+  gridOffsetX,
   anchorsY,
   containerHeight,
   onDrop,
   onPress,
 }: DraggableItemThumbProps) {
-  const offsetX = useSharedValue(0);
+  const dragOffsetX = useSharedValue(0);
   const offsetY = useSharedValue(0);
   const dragging = useSharedValue(0);
 
   const localRow = (item.slotRow ?? 0) - rowOffset;
-  const baseX = (item.slotCol ?? 0) * (slotSize + gap);
+  const baseX = gridOffsetX + (item.slotCol ?? 0) * (slotSize + gap);
   const baseY = anchorsY[localRow] * containerHeight - slotSize;
 
   const drop = (row: number, col: number) => onDrop(item.id, row + rowOffset, col);
@@ -174,7 +218,7 @@ function DraggableItemThumb({
       dragging.value = 1;
     })
     .onUpdate((e) => {
-      offsetX.value = e.translationX;
+      dragOffsetX.value = e.translationX;
       offsetY.value = e.translationY;
     })
     .onEnd((e) => {
@@ -182,9 +226,9 @@ function DraggableItemThumb({
       const finalBottomY = baseY + e.translationY + slotSize;
       // Clamped to this page's local rows/cols — cross-page dragging is a
       // possible future enhancement, out of scope for this fix.
-      const targetCol = Math.min(Math.max(Math.round(finalX / (slotSize + gap)), 0), cols - 1);
+      const targetCol = Math.min(Math.max(Math.round((finalX - gridOffsetX) / (slotSize + gap)), 0), cols - 1);
       const targetRow = nearestAnchorRow(finalBottomY, anchorsY, containerHeight);
-      offsetX.value = withSpring(0);
+      dragOffsetX.value = withSpring(0);
       offsetY.value = withSpring(0);
       runOnJS(drop)(targetRow, targetCol);
     })
@@ -203,7 +247,7 @@ function DraggableItemThumb({
     top: baseY,
     width: slotSize,
     height: slotSize,
-    transform: [{ translateX: offsetX.value }, { translateY: offsetY.value }, { scale: dragging.value ? 1.06 : 1 }],
+    transform: [{ translateX: dragOffsetX.value }, { translateY: offsetY.value }, { scale: dragging.value ? 1.06 : 1 }],
     zIndex: dragging.value ? 10 : 1,
     opacity: dragging.value ? 0.9 : 1,
   }));
@@ -248,11 +292,18 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '300',
   },
+  // No backgroundColor here on purpose: a background-removed item photo is
+  // a transparent-background PNG cutout (see backgroundRemoval.ts), and
+  // this slot sits directly on top of the shelf's own background image —
+  // an opaque fill here would hide it behind a flat color swatch instead
+  // of letting the item look like it's actually resting on the shelf.
+  // `itemPlaceholder` below (the no-photo case) supplies its own opaque
+  // background, and a normal (non-cutout) photo with `resizeMode="cover"`
+  // already fills these bounds completely, so this is a no-op for it.
   itemSlot: {
     position: 'absolute',
     borderRadius: radius.sm,
     overflow: 'hidden',
-    backgroundColor: colors.bgCard,
   },
   itemImage: {
     width: '100%',

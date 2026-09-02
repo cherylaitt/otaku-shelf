@@ -1,20 +1,15 @@
 import { db, markDatabaseInitialized } from './client';
 import { CREATE_TABLES_SQL } from './schema';
-import { STARTER_ENVIRONMENTS } from './seedEnvironments';
 
 /**
- * Idempotent startup routine: creates tables if missing, migrates any
- * pre-existing tables to the current schema, then seeds the starter
- * Environment catalog only if the table is empty (so we never clobber a
- * returning user's unlock progress).
+ * Idempotent startup routine: creates tables if missing (current shape),
+ * then migrates any pre-existing tables forward to that shape.
  */
 export function initDatabase(): void {
   db.execSync(CREATE_TABLES_SQL);
   migrateGroupsToColumnCountIfNeeded();
   migrateGroupsToRowsColumnsIfNeeded();
-  migrateEnvironmentsToBackgroundVariantsIfNeeded();
-  syncStarterEnvironmentsIfNeeded();
-  remapLegacyEnvironmentIdsIfNeeded();
+  migrateGroupsRemoveActiveEnvironmentIfNeeded();
   markDatabaseInitialized();
 }
 
@@ -32,12 +27,28 @@ export function initDatabase(): void {
  * placements) are never touched — only `item_groups` is rebuilt, and
  * foreign keys are matched back up by `id` once it's renamed back into
  * place, so no item placement is lost or moved by this migration.
+ *
+ * NOTE: this intermediate shape still carries `activeEnvironmentId
+ * REFERENCES environments(id)`, matching exactly what was on disk at this
+ * historical schema version (an `environments` table genuinely existed
+ * then, for any install old enough to need this step) —
+ * `migrateGroupsRemoveActiveEnvironmentIfNeeded` below drops that column
+ * (and the now-fully-unused `environments`/`gacha_pulls` tables) in a
+ * later step, once it's safe to.
  */
 function migrateGroupsToColumnCountIfNeeded(): void {
   const columns = db.getAllSync<{ name: string }>('PRAGMA table_info(item_groups);');
   const hasLegacyGridColumns = columns.some((c) => c.name === 'gridRows' || c.name === 'gridCols');
-  const hasColumnCount = columns.some((c) => c.name === 'columnCount');
-  if (!hasLegacyGridColumns && hasColumnCount) return; // fresh install or already migrated
+  // This migration's only job is converting AWAY FROM `gridRows`/`gridCols`
+  // (schema v1) — if they're not there, there's nothing for it to do,
+  // regardless of what shape the table is *currently* in. Checking for the
+  // presence of `columnCount` instead (as this used to) breaks on a fresh
+  // schema-v5 install: that table has neither `gridRows`/`gridCols` NOR
+  // `columnCount` (it's created with `rows`/`columns` directly, skipping
+  // the `columnCount` shape entirely, see CREATE_TABLES_SQL) — this
+  // function would then wrongly fall through into the v1->v2 rebuild below
+  // and crash on `activeEnvironmentId`, a column schema v5 never has.
+  if (!hasLegacyGridColumns) return; // fresh install or already migrated
 
   db.execSync('PRAGMA foreign_keys = OFF;');
   db.withTransactionSync(() => {
@@ -48,11 +59,11 @@ function migrateGroupsToColumnCountIfNeeded(): void {
         description TEXT,
         category TEXT NOT NULL CHECK (category IN ('paper', 'figure')),
         columnCount INTEGER NOT NULL,
-        activeEnvironmentId TEXT REFERENCES environments(id) ON DELETE SET NULL,
+        activeEnvironmentId TEXT,
         createdAt INTEGER NOT NULL
       );
     `);
-    const columnCountSource = hasLegacyGridColumns ? 'COALESCE(gridCols, 4)' : '4';
+    const columnCountSource = 'COALESCE(gridCols, 4)';
     db.execSync(`
       INSERT INTO item_groups_v2 (id, name, description, category, columnCount, activeEnvironmentId, createdAt)
       SELECT id, name, description, category, ${columnCountSource}, activeEnvironmentId, createdAt FROM item_groups;
@@ -97,7 +108,7 @@ function migrateGroupsToRowsColumnsIfNeeded(): void {
         category TEXT NOT NULL CHECK (category IN ('paper', 'figure')),
         rows INTEGER NOT NULL,
         columns INTEGER NOT NULL,
-        activeEnvironmentId TEXT REFERENCES environments(id) ON DELETE SET NULL,
+        activeEnvironmentId TEXT,
         createdAt INTEGER NOT NULL
       );
     `);
@@ -140,179 +151,45 @@ function computeLegacyRowCount(columnCount: number, occupiedSlotRows: number[]):
 }
 
 /**
- * Migrates `environments` from schema v3's single `backgroundImageUri`
- * (one image, stretched/covered across however many rows a group happened
- * to have) to schema v4's `backgroundVariants` — a JSON-encoded array of
- * per-row-count assets + shelf-line anchors (see `ShelfBackgroundVariant`).
- *
- * There's no meaningful way to carry an old single image forward into the
- * new per-row-count-variant shape (it wasn't authored with row-count-
- * specific shelf lines at all), so this just makes room for the new column
- * with an empty `'[]'` placeholder — `syncStarterEnvironmentsIfNeeded`,
- * which runs immediately after, unconditionally overwrites
- * `backgroundVariants` for every catalog id from the current
- * STARTER_ENVIRONMENTS source anyway (this column is fully
- * developer-controlled catalog content, never user data), so the
- * placeholder never stays empty in practice.
+ * Migrates `item_groups` from schema v3/v4 (which still carried
+ * `activeEnvironmentId`, pointing at a row in a whole gacha-unlockable
+ * `environments` catalog) to schema v5, which dropped that entire system —
+ * see README "Backgrounds are fixed per category, not user-selectable".
+ * A group's background is now derived purely from its `category` (see
+ * `shared/utils/shelfBackground.ts`), so `activeEnvironmentId` has nothing
+ * left to point at and is simply removed, along with the now-fully-unused
+ * `environments` and `gacha_pulls` tables (dropped unconditionally — safe
+ * even on a fresh install where they were never created in the first
+ * place, since `DROP TABLE IF EXISTS` is a no-op then).
  */
-function migrateEnvironmentsToBackgroundVariantsIfNeeded(): void {
-  const tableInfo = db.getAllSync<{ name: string }>('PRAGMA table_info(environments);');
-  const hasBackgroundImageUri = tableInfo.some((c) => c.name === 'backgroundImageUri');
-  const hasBackgroundVariants = tableInfo.some((c) => c.name === 'backgroundVariants');
-  if (!hasBackgroundImageUri && hasBackgroundVariants) return; // fresh install or already migrated
+function migrateGroupsRemoveActiveEnvironmentIfNeeded(): void {
+  const tableInfo = db.getAllSync<{ name: string }>('PRAGMA table_info(item_groups);');
+  const hasActiveEnvironmentId = tableInfo.some((c) => c.name === 'activeEnvironmentId');
 
-  db.execSync('PRAGMA foreign_keys = OFF;');
-  db.withTransactionSync(() => {
-    db.execSync(`
-      CREATE TABLE environments_v4 (
-        id TEXT PRIMARY KEY NOT NULL,
-        name TEXT NOT NULL,
-        backgroundColor TEXT NOT NULL,
-        category TEXT NOT NULL CHECK (category IN ('paper', 'figure')),
-        displayKind TEXT NOT NULL CHECK (displayKind IN ('card-holder', 'shelf', 'drawer')),
-        rarity TEXT NOT NULL CHECK (rarity IN ('common', 'rare', 'epic', 'legendary')),
-        isUnlocked INTEGER NOT NULL DEFAULT 0,
-        unlockedAt INTEGER,
-        backgroundVariants TEXT NOT NULL DEFAULT '[]'
-      );
-    `);
-    db.execSync(`
-      INSERT INTO environments_v4 (id, name, backgroundColor, category, displayKind, rarity, isUnlocked, unlockedAt, backgroundVariants)
-      SELECT id, name, backgroundColor, category, displayKind, rarity, isUnlocked, unlockedAt, '[]' FROM environments;
-    `);
-    db.execSync('DROP TABLE environments;');
-    db.execSync('ALTER TABLE environments_v4 RENAME TO environments;');
-  });
-  db.execSync('PRAGMA foreign_keys = ON;');
-}
-
-/**
- * Reconciles the `environments` table with the current STARTER_ENVIRONMENTS
- * source on every launch — this both seeds a fresh install AND keeps an
- * already-seeded install in sync as the catalog changes over time.
- *
- * Unlike the rest of an Environment row (isUnlocked, unlockedAt — genuine
- * user progress, never touched here), everything else about a starter
- * Environment is fully developer-controlled catalog content the user has
- * no UI to edit, so an UPSERT is safe:
- *
- * - An id not yet in the DB (fresh install, or a brand-new catalog entry
- *   like swapping "Acrylic Display Case" for "Lavender Card Sleeve" under
- *   a new id) gets INSERTed with the catalog's own isUnlocked default.
- * - An id already in the DB gets its name/art/category/displayKind/rarity
- *   synced to match the source, leaving isUnlocked/unlockedAt alone. A
- *   plain `UPDATE ... WHERE id = ?` (the previous approach here) can only
- *   ever touch rows that already exist — it silently does nothing for a
- *   new id, which is exactly why a renamed/added entry could sit unseen on
- *   an already-seeded install. INSERT ... ON CONFLICT DO UPDATE covers both
- *   cases in one statement.
- * - An id that's no longer in the source list (fully retired, not just
- *   renamed) is deleted — unless gacha history still references it via
- *   `gacha_pulls.resultEnvironmentId` (which has no ON DELETE clause), in
- *   which case it's left in place rather than risk breaking that history
- *   or throwing a foreign-key error.
- */
-function syncStarterEnvironmentsIfNeeded(): void {
-  db.withTransactionSync(() => {
-    for (const env of STARTER_ENVIRONMENTS) {
-      db.runSync(
-        `INSERT INTO environments (id, name, backgroundColor, category, displayKind, rarity, isUnlocked, unlockedAt, backgroundVariants)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(id) DO UPDATE SET
-           name = excluded.name,
-           backgroundColor = excluded.backgroundColor,
-           category = excluded.category,
-           displayKind = excluded.displayKind,
-           rarity = excluded.rarity,
-           backgroundVariants = excluded.backgroundVariants;`,
-        env.id,
-        env.name,
-        env.backgroundColor,
-        env.category,
-        env.displayKind,
-        env.rarity,
-        env.isUnlocked ? 1 : 0,
-        env.isUnlocked ? Date.now() : null,
-        JSON.stringify(env.backgroundVariants)
-      );
-    }
-
-    const currentIds = STARTER_ENVIRONMENTS.map((e) => e.id);
-    const placeholders = currentIds.map(() => '?').join(',');
-    const stale = db.getAllSync<{ id: string }>(
-      `SELECT id FROM environments WHERE id NOT IN (${placeholders});`,
-      ...currentIds
-    );
-    for (const { id } of stale) {
-      const referenced = db.getFirstSync<{ count: number }>(
-        'SELECT COUNT(*) as count FROM gacha_pulls WHERE resultEnvironmentId = ?;',
-        id
-      );
-      if (referenced && referenced.count > 0) continue; // keep retired-but-historically-referenced rows
-      db.runSync('DELETE FROM environments WHERE id = ?;', id);
-    }
-  });
-}
-
-/**
- * A STARTER_ENVIRONMENTS `id` must be treated as permanent once shipped —
- * `syncStarterEnvironmentsIfNeeded` above keys everything off of `id`, so
- * changing a catalog entry's `id` (instead of just its `name`/art in place)
- * makes it look, from the sync's point of view, like the old id was retired
- * and a brand-new environment was added. If that old id is only sitting in
- * the catalog unused, `syncStarterEnvironmentsIfNeeded` quietly deletes it
- * and the rename is invisible. But if it was ever gacha-pulled or is equipped
- * on a shelf, the safe-delete check above deliberately keeps the row (to
- * avoid a dangling FK / losing pull history) — which means it lingers
- * forever under its last-synced name, while a separate, correctly-named row
- * exists under the new id. That's exactly what happened here: an id that
- * used to back "Green Card Sleeve" was renamed to `env-paper-green`
- * ("Green Binder Page") in the source, but the old id was still equipped on
- * a real shelf, so its row survived untouched — the rename never reached the
- * one place the user was actually looking.
- *
- * This table is the fix for that class of bug after the fact: map every
- * retired id that might still be referenced to whatever id replaced it, and
- * this function repoints those references, carries the old row's unlock
- * progress forward, and drops the now-unreferenced old row, on every launch.
- * It runs after `syncStarterEnvironmentsIfNeeded` so the replacement id's row
- * is guaranteed to already exist before anything is repointed at it
- * (`gacha_pulls.resultEnvironmentId` has a real FK constraint, so pointing it
- * at a not-yet-inserted id would throw).
- *
- * Going forward: never change an existing STARTER_ENVIRONMENTS entry's `id`.
- * If an id genuinely must be replaced, add an entry here instead.
- */
-const LEGACY_ENVIRONMENT_ID_REMAP: Record<string, string> = {
-  'env-paper-velvet': 'env-paper-green',
-};
-
-function remapLegacyEnvironmentIdsIfNeeded(): void {
-  db.withTransactionSync(() => {
-    for (const [oldId, newId] of Object.entries(LEGACY_ENVIRONMENT_ID_REMAP)) {
-      const old = db.getFirstSync<{ id: string; isUnlocked: number; unlockedAt: number | null }>(
-        'SELECT id, isUnlocked, unlockedAt FROM environments WHERE id = ?;',
-        oldId
-      );
-      if (!old) continue; // already cleaned up on a previous launch
-
-      // The old row's `isUnlocked`/`unlockedAt` is real user progress (it was
-      // gacha-pulled) that syncStarterEnvironmentsIfNeeded's INSERT above had
-      // no way to know about — the new id looked brand-new to it, so it got
-      // seeded with the catalog's default (locked). Carry the old row's
-      // unlock status forward — but only to unlock, never to re-lock — so an
-      // id rename can never look like it revoked something the user earned.
-      if (old.isUnlocked) {
-        db.runSync(
-          'UPDATE environments SET isUnlocked = 1, unlockedAt = COALESCE(unlockedAt, ?) WHERE id = ? AND isUnlocked = 0;',
-          old.unlockedAt ?? Date.now(),
-          newId
+  if (hasActiveEnvironmentId) {
+    db.execSync('PRAGMA foreign_keys = OFF;');
+    db.withTransactionSync(() => {
+      db.execSync(`
+        CREATE TABLE item_groups_v5 (
+          id TEXT PRIMARY KEY NOT NULL,
+          name TEXT NOT NULL,
+          description TEXT,
+          category TEXT NOT NULL CHECK (category IN ('paper', 'figure')),
+          rows INTEGER NOT NULL,
+          columns INTEGER NOT NULL,
+          createdAt INTEGER NOT NULL
         );
-      }
+      `);
+      db.execSync(`
+        INSERT INTO item_groups_v5 (id, name, description, category, rows, columns, createdAt)
+        SELECT id, name, description, category, rows, columns, createdAt FROM item_groups;
+      `);
+      db.execSync('DROP TABLE item_groups;');
+      db.execSync('ALTER TABLE item_groups_v5 RENAME TO item_groups;');
+    });
+    db.execSync('PRAGMA foreign_keys = ON;');
+  }
 
-      db.runSync('UPDATE gacha_pulls SET resultEnvironmentId = ? WHERE resultEnvironmentId = ?;', newId, oldId);
-      db.runSync('UPDATE item_groups SET activeEnvironmentId = ? WHERE activeEnvironmentId = ?;', newId, oldId);
-      db.runSync('DELETE FROM environments WHERE id = ?;', oldId);
-    }
-  });
+  db.execSync('DROP TABLE IF EXISTS gacha_pulls;');
+  db.execSync('DROP TABLE IF EXISTS environments;');
 }

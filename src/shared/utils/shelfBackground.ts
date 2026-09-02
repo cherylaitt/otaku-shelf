@@ -1,4 +1,5 @@
-import { DEFAULT_GRID_ROWS, Environment, ShelfBackgroundVariant } from '../types/models';
+import { Category } from '../types/models';
+import { FIGURE_SHELF_VARIANTS, PAPER_TEXTURE } from '../config/shelfBackgrounds';
 
 /** Default anchors for a row count with no authored `shelfAnchorY` data — mathematically identical to the old even-grid-division behavior. */
 export function evenRowAnchors(rows: number): number[] {
@@ -14,45 +15,40 @@ export interface ResolvedShelfBackground {
 }
 
 /**
- * Picks the background asset for a group's shelf. Behavior is deliberately
- * different per `Environment.category`, mirroring how differently the two
- * categories' art is authored:
+ * Picks the fixed background asset for a group's shelf, given its category
+ * and current row count. There is exactly one background per category (see
+ * `shared/config/shelfBackgrounds.ts` — no user-facing style choice), but
+ * behavior still differs per category, mirroring how differently the art
+ * is authored:
  *
- * - **figure** environments carry baked-in shelf art with real, unevenly-
- *   spaced shelf boards drawn into the image — one full asset PER row-count
- *   preset (see `ShelfBackgroundVariant`). This resolves the variant whose
- *   `rows` exactly matches the group's current row count, swapping the
- *   FULL asset (image + its own `shelfAnchorY`) whenever a resize changes
- *   that row count. If no variant matches (or the environment has no art
- *   at all), falls back to evenly-spaced rows with no image, rather than
- *   ever showing art whose baked-in shelf lines don't match the row count.
- * - **paper** environments use one continuous texture regardless of row
- *   count (a binder-page pattern, a con-booth backdrop, etc. — there's no
- *   physical "shelf" in the art to line up with rows in the first place).
- *   The single stored variant's image is always used as-is; its own `rows`/
- *   `shelfAnchorY` are ignored, and rows are always evenly divided by app
- *   code, exactly as before this system existed for figure goods.
+ * - **figure**: baked-in shelf art with real, unevenly-spaced shelf boards
+ *   drawn into the image — one full asset PER row-count preset (see
+ *   `ShelfBackgroundVariant`). This resolves the variant whose `rows`
+ *   exactly matches the group's current row count, swapping the FULL asset
+ *   (image + its own `shelfAnchorY`) whenever a resize changes that row
+ *   count. If no variant matches, falls back to evenly-spaced rows with no
+ *   image, rather than ever showing art whose baked-in shelf lines don't
+ *   match the row count.
+ * - **paper**: one continuous texture regardless of row count (a binder-
+ *   page pattern, a con-booth backdrop, etc. — there's no physical "shelf"
+ *   in the art to line up with rows in the first place). Its own `rows`/
+ *   `shelfAnchorY` are ignored; rows are always evenly divided by app code.
  */
-export function resolveShelfBackground(env: Environment | null | undefined, rows: number): ResolvedShelfBackground {
-  if (!env || env.backgroundVariants.length === 0) {
-    return { imageUri: null, imageWidth: null, imageHeight: null, anchorsY: evenRowAnchors(rows) };
+export function resolveShelfBackground(category: Category, rows: number): ResolvedShelfBackground {
+  if (category === 'paper') {
+    return {
+      imageUri: PAPER_TEXTURE.imageUri,
+      imageWidth: PAPER_TEXTURE.imageWidth,
+      imageHeight: PAPER_TEXTURE.imageHeight,
+      anchorsY: evenRowAnchors(rows),
+    };
   }
 
-  if (env.category === 'paper') {
-    const single = env.backgroundVariants[0];
-    return { imageUri: single.imageUri, imageWidth: single.imageWidth, imageHeight: single.imageHeight, anchorsY: evenRowAnchors(rows) };
-  }
-
-  const variant = env.backgroundVariants.find((v) => v.rows === rows);
+  const variant = FIGURE_SHELF_VARIANTS.find((v) => v.rows === rows);
   if (variant && variant.shelfAnchorY.length === rows) {
     return { imageUri: variant.imageUri, imageWidth: variant.imageWidth, imageHeight: variant.imageHeight, anchorsY: variant.shelfAnchorY };
   }
   return { imageUri: null, imageWidth: null, imageHeight: null, anchorsY: evenRowAnchors(rows) };
-}
-
-/** A representative variant for contexts with no specific group/row-count in play (e.g. a Gacha reveal card) — prefers the default row count, else whatever's first. */
-export function pickRepresentativeVariant(env: Environment): ShelfBackgroundVariant | null {
-  return env.backgroundVariants.find((v) => v.rows === DEFAULT_GRID_ROWS) ?? env.backgroundVariants[0] ?? null;
 }
 
 export interface CoverCrop {

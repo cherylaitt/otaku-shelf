@@ -1,9 +1,11 @@
 # Otaku Shelf
 
 A React Native (Expo) app for anime/idol goods collectors: log purchased merch
-with photos, arrange it on a customizable virtual display grid, track
-purchase status, and unlock new display "environments" through a mocked
-ad-gated gacha system.
+with photos (with optional on-device background removal), arrange it on a
+customizable fixed-grid virtual display, and track purchase status. Monetized
+by a single banner ad on the Inventory tab — there is no gacha, no rarity
+tiers, and no user-selectable background styles (see "Backgrounds are fixed
+per category" below for why, and what used to be there instead).
 
 ## Getting started
 
@@ -18,17 +20,19 @@ device or a simulator with camera support).
 
 ## The category system
 
-Every `Group` and `Environment` belongs to exactly one of two permanent
-categories:
+Every `Group` (and, indirectly, every `Item` via its parent Group) belongs to
+exactly one of two permanent categories:
 
 - **paper** — cards, postcards, posters (displayed in card holders)
 - **figure** — acrylic stands, dolls, figures (displayed on shelves/drawers)
 
 A Group's category is chosen at creation and **cannot be changed** — there is
 no edit option in the UI, and the data layer (`itemsRepository`,
-`groupsRepository`) rejects any attempt to assign a mismatched `ItemType` or
-`Environment` to a Group, throwing `CategoryMismatchError`. This is enforced
-independently of the UI so it can't be bypassed.
+`groupsRepository`) rejects any attempt to assign a mismatched `ItemType` to
+a Group, throwing `CategoryMismatchError`. This is enforced independently of
+the UI so it can't be bypassed. Category also determines which of the two
+fixed backgrounds a Group's shelf uses — see "Backgrounds are fixed per
+category" below.
 
 ## Fixed grid layout, per group
 
@@ -65,32 +69,33 @@ removed; capacity is 100% under the user's control.
   displaying, so upgrading never silently reflows/shrinks anyone's shelf —
   see `migrateGroupsToRowsColumnsIfNeeded` in `src/shared/db/migrate.ts`.
 
-## Shelf-anchored backgrounds (figure goods only)
+## Backgrounds are fixed per category, not user-selectable
 
-`Environment.backgroundVariants: ShelfBackgroundVariant[]`
-(`src/shared/types/models.ts`) means something different depending on the
-environment's `category` — see `resolveShelfBackground` in
-`src/shared/utils/shelfBackground.ts` for the authoritative branch:
+There used to be a whole gacha-unlockable catalog of `Environment` rows
+(rarity tiers, an ad-gated "pull" loop, a Skin Locker screen to browse and
+equip unlocked ones). **All of that was cut** — see "What used to be here"
+below. In its place, there are exactly two backgrounds, one per goods
+category, defined as static constants in
+`src/shared/config/shelfBackgrounds.ts` — nothing in the database, nothing
+the user can browse or switch. A Group's background is derived purely from
+its `category` via `resolveShelfBackground` in
+`src/shared/utils/shelfBackground.ts`:
 
-- **figure** environments have baked-in shelf art: one full variant PER
-  supported row-count preset (3/4/5 — see `GRID_ROW_PRESETS`), each with
-  its own image plus a hand-measured `shelfAnchorY: number[]` — a
+- **figure** groups get baked-in shelf art: one full variant PER supported
+  row-count preset (3/4/5 — see `GRID_ROW_PRESETS`, `FIGURE_SHELF_VARIANTS`),
+  each with its own image plus a hand-measured `shelfAnchorY: number[]` — a
   normalized (0-1) Y position, relative to the *full source image*, of
   each row's shelf TOP SURFACE. Resizing a figure group's rows **swaps the
-  full asset** (image + anchors together, via `figureShelfVariants` in
-  `seedEnvironments.ts`) rather than overlaying/stretching one picture —
-  real shelf photography/renders have uneven gaps (a shorter top
-  compartment is typical), so these are never auto-generated as evenly
-  spaced. If no variant matches a group's current row count (or the
-  environment has no art at all), rows fall back to evenly spaced with no
-  image, rather than ever showing art whose baked-in shelf lines don't
-  line up.
-- **paper** environments are unaffected by any of this: one continuous
-  texture (`singleTexturePaperBackground` in `seedEnvironments.ts`) used
-  as-is no matter the group's row count — there's no physical shelf in a
-  binder page or con-booth backdrop to line rows up against — and rows are
-  always evenly divided by app code, exactly as before this system
-  existed.
+  full asset** (image + anchors together) rather than overlaying/stretching
+  one picture — real shelf photography/renders have uneven gaps (a shorter
+  top compartment is typical), so these are never auto-generated as evenly
+  spaced. This row-count swap is the one piece of the old variant system
+  that survived — it's needed for resizing to work correctly, not for any
+  user-facing style choice. If no variant matches a group's current row
+  count, rows fall back to evenly spaced with no image.
+- **paper** groups get one continuous texture (`PAPER_TEXTURE`) used as-is
+  no matter the row count — there's no physical shelf in a binder page to
+  line rows up against — and rows are always evenly divided by app code.
 
 For figure goods specifically:
 
@@ -110,13 +115,26 @@ For figure goods specifically:
   before handing anchors to `ShelfGrid` — otherwise a shelf line near the
   top or bottom edge could land off-position on a differently-shaped
   screen.
-- "Classic Shelf" currently ships illustrative, deliberately non-uniform
-  placeholder `shelfAnchorY` values (top compartment shorter than the
-  rest) reusing the same one bundled image across all three row-count
-  presets — there's no genuinely distinct art per row count yet. Real
-  per-row-count art (distinct images, each hand-measured) is a drop-in
-  data change to `CLASSIC_SHELF_VARIANTS` in `seedEnvironments.ts`; no
-  rendering code needs to change.
+- The figure background ("Classic Shelf") ships genuinely distinct art per
+  row-count preset, each with its own hand-measured `shelfAnchorY` (see
+  `FIGURE_SHELF_VARIANTS` in `shared/config/shelfBackgrounds.ts`) — adding
+  another figure background variant, or replacing this art, is a drop-in
+  data change there; no rendering code needs to change.
+
+### What used to be here
+
+Earlier iterations of this app had a full gacha/rarity system: an
+`Environment` catalog stored in SQLite with `rarity` tiers
+(common/rare/epic/legendary), `isUnlocked`/`unlockedAt` progress per row, an
+ad-gated "pull" loop (Gacha tab, `MockAdService`), and a Skin Locker screen
+to browse/equip unlocked backgrounds per group. User testing found this
+added complexity without adding value, so it was removed wholesale — no
+`environments` or `gacha_pulls` tables, no `Rarity`/`DisplayKind` types, no
+Gacha tab, no Skin Locker, no `activeEnvironmentId` on `Group` (see
+`migrateGroupsRemoveActiveEnvironmentIfNeeded` in `src/shared/db/migrate.ts`
+for how an existing install's data is cleaned up on upgrade). If a
+user-facing style choice is ever wanted again, it should be designed fresh
+rather than resurrecting any of this.
 
 ## Project structure
 
@@ -124,46 +142,128 @@ For figure goods specifically:
 src/
   features/
     groups/     Group List, Create Group, groups Zustand store
-    items/      Add/Edit Item, Item Detail, barcode scanner, item store
-    shelf/      Shelf View (drag & drop grid), Skin Locker, slot picker
-    gacha/      Gacha screen, weighted draw logic, gacha store
-    inventory/  Inventory list, Sold Archive
+    items/      Add/Edit Item (photo + optional background removal +
+                barcode-as-reference), Item Detail, barcode scanner, item store
+    shelf/      Shelf View (drag & drop grid), slot picker
+    inventory/  Inventory list (shows the one banner ad), Sold Archive
     settings/   Settings screen (reset data, about)
   shared/
-    db/         SQLite client, schema, migrations, seed data, repositories
-    services/   AdService (mock), ImageService
-    store/      Cross-feature Zustand stores (Environments catalog)
-    components/ Reusable UI primitives (Button, TextField, pills, etc.)
+    db/         SQLite client, schema, migrations, repositories
+    services/   ads.ts (AdMob init/ATT), backgroundRemoval.ts, imageService.ts
+    config/      shelfBackgrounds.ts — the two fixed per-category backgrounds
+    components/ Reusable UI primitives (Button, TextField, pills, BannerAdSlot, etc.)
     theme/      Design tokens (colors, spacing, typography)
     types/      Shared domain models & enums
     utils/      id generation, formatting helpers
 navigation/      React Navigation stack + bottom tabs
+modules/
+  subject-lift/ Local Expo native module — on-device background removal
+                (iOS Vision / Android ML Kit), see "Background removal" below
 ```
 
 ## Persistence
 
-- **Structured data** (groups, items, environments, gacha history) lives in
-  SQLite via `expo-sqlite`, accessed exclusively through the repositories in
-  `src/shared/db/repositories`. No screen talks to SQL directly.
+- **Structured data** (groups, items) lives in SQLite via `expo-sqlite`,
+  accessed exclusively through the repositories in `src/shared/db/repositories`.
+  No screen talks to SQL directly. There is no `environments` or
+  `gacha_pulls` table (see "What used to be here" above) — backgrounds are
+  static config, not persisted data.
 - **Photos** are copied from the OS-provided transient picker URI into the
   app's permanent document directory (`expo-file-system`'s `File`/`Directory`
   API) before the path is saved to SQLite — this is what makes photos survive
-  app restarts and OS cache clears.
+  app restarts and OS cache clears. If background removal produces a cutout,
+  that cutout (not the original photo) is what gets saved as the item's
+  `imageUri`, but the original stays on disk untouched (it's just not
+  referenced from the item) so a future "revert" is possible while editing.
 
-## Swapping in a real ad SDK
+## Ad monetization
 
-Gacha pulls go through the `AdService` interface
-(`src/shared/services/adService.ts`). The MVP ships `MockAdService`, which
-simulates a 3–5s rewarded-ad load and always grants the reward. To go live:
+**Phase 1 (implemented): banner ads.** `src/shared/services/ads.ts` wraps
+[`react-native-google-mobile-ads`](https://docs.page/invertase/react-native-google-mobile-ads)
+(the standard AdMob SDK for Expo, with its own config plugin — see the
+`react-native-google-mobile-ads` entry in `app.json`'s `plugins`) plus
+`expo-tracking-transparency` for the iOS ATT prompt. `initializeAds()` is
+called once from `App.tsx` on startup: it requests ATT (iOS only, no-op on
+Android) before initializing the Mobile Ads SDK, per Apple's guidance to
+resolve tracking consent before the first ad request.
 
-1. `npx expo install react-native-google-mobile-ads` (or your ad SDK of choice).
-2. Add an `AdMobAdService implements AdService` class wiring `showRewardedAd()`
-   to the real SDK's load/show/reward-earned flow.
-3. Change the single line in `getAdService()` to return the new
-   implementation instead of the mock.
+`BannerAdSlot` (`src/shared/components/BannerAdSlot.tsx`) is used on
+**exactly one** screen — the Inventory List/browse tab — never on Shelf
+View, Add/Edit Item, or any modal/detail screen. It reserves a themed
+placeholder before the ad loads, then resizes to the SDK-reported adaptive
+banner height for the device's actual width (`onAdLoaded`/`onSizeChange`,
+never a hardcoded height), and collapses to zero height if the ad fails to
+load rather than leaving a dead gap. It's rendered as a normal flex sibling
+of the list (not absolutely positioned), so the list's available space just
+shrinks/grows around it — there's no separate "with banner"/"without
+banner" layout branch to maintain.
 
-No screen or store code needs to change — everything depends only on the
-`AdService` interface.
+Both the AdMob App IDs (in `app.json`) and the ad unit id (in `ads.ts`) are
+currently Google's published **test** ids — see the `TODO` comments at both
+call sites. Swap in real ids from your own AdMob console before submitting
+to the stores; a new native build is required either way, since this SDK
+has native code.
+
+**Phase 2 (not implemented, by design): rewarded ads.** Flagged as future
+work, gated behind features that don't exist yet — a rewarded ad to unlock
+high-res/watermark-free export, and one to unlock cloud-quality background
+removal once a premium tier is designed. Don't build rewarded ad UI/SDK
+calls until one of those gated features actually exists.
+
+## Background removal
+
+When adding/editing an Item's photo, if a fresh photo was just taken or
+picked, an optional **"✂️ Remove Background"** step appears — fully
+on-device, no network call, no cloud API, works offline:
+
+- **iOS 17+**: Vision framework's `VNGenerateForegroundInstanceMaskRequest`
+  (subject lifting).
+- **Android (API 24-35 only — see below)**: ML Kit's Subject Segmentation
+  (`play-services-mlkit-subject-segmentation`).
+
+Both are wired through a small local Expo native module,
+`modules/subject-lift/` (Swift + Kotlin, using the
+[Expo Modules API](https://docs.expo.dev/modules/)), behind
+`src/shared/services/backgroundRemoval.ts`. That service is defensive by
+design: `isAvailable()` decides whether to even show the button, and every
+"couldn't do it" case (OS too old, no distinct subject found, model still
+downloading) resolves to the same `{ status: 'unavailable' }` rather than an
+error — the UI just keeps the original photo. The original photo is never
+overwritten; only the *saved* `imageUri` is replaced by the cutout, so
+"Use Original Instead" always has something to revert to.
+
+Once saved, a cutout (a transparent-background PNG) composites naturally
+onto its group's shelf background just from normal view layering — the
+item's grid slot (`ShelfGrid.tsx`'s `itemSlot` style) deliberately has no
+opaque background color behind it, so the shelf art already painted behind
+the grid shows through any transparent pixels. A regular (non-cutout) photo
+is unaffected by this, since `resizeMode="cover"` already fills the slot
+completely.
+
+**Android version cap, and why:** the only currently-published version of
+`play-services-mlkit-subject-segmentation` (`16.0.0-beta1`, unpatched since
+Nov 2023) has a known, unfixed native crash (a SIGSEGV from an MTE
+pointer-tagging fault in its GPU delegate) on Android 16 / API 36+ — see
+[googlesamples/mlkit#1017](https://github.com/googlesamples/mlkit/issues/1017).
+That crash happens in native code with no catchable JS/Kotlin exception, so
+`SubjectLiftModule.kt` refuses to even attempt segmentation above API 35 and
+reports `isAvailable() == false` instead — a missing feature beats one that
+takes the whole app down. Re-check that library's changelog periodically
+and raise the cap (or switch libraries) once a fix ships.
+
+**Status: written, not yet verified on-device.** Both native
+implementations were written against each platform's documented API surface,
+but this environment has no Xcode/Android emulator to compile or run them.
+`modules/subject-lift` is a **brand-new native module** the current
+committed `ios/` project (and any existing Android build) doesn't know
+about yet — a fresh native build (`npx expo run:ios` / `npx expo run:android`,
+or a new EAS build, same as any other new native dependency; see "When you
+actually need a new native build" below) is required before this feature
+does anything at all. Until then, `backgroundRemoval.ts` catches the
+"native module not found" error and reports the feature as unavailable, so
+the rest of the app keeps working normally — but "Remove Background" simply
+won't appear. After rebuilding, manually test end-to-end on a real device
+per the checklist in each native file's doc comment before shipping.
 
 ## Builds & OTA updates (EAS)
 
@@ -210,7 +310,7 @@ changes above — that keeps OTA updates from ever being served to a binary
 that isn't compatible with them. JS-only changes should **not** bump
 `version`; they just get pushed as an update to the existing runtime.
 
-## Barcode scanning is manual-first, by design
+## Barcode scanning is an optional shortcut, not the main entry path
 
 There is intentionally **no barcode → product lookup API** anywhere in this
 app. General-purpose UPC/barcode databases are built for mass-market retail
@@ -218,36 +318,42 @@ goods and essentially never contain anime/idol collectibles (figures,
 acrylic stands, doujin cards, event-exclusive goods) — an earlier version of
 this screen tried exactly that integration, and it returned "not found" for
 nearly every real item, so it was removed rather than kept as dead weight.
+This is a deliberate, fixed limitation, not a gap slated for more work — see
+"ADJUST: Barcode Scanning" in the project history for the explicit call not
+to invest further in improving match rates or database coverage.
 
 - **Scan Barcode** still opens the camera (`expo-camera`'s `CameraView`) and
   decodes the barcode exactly as before — that capability is unchanged.
 - On a successful decode, the code is saved on the Item as a plain
   **local reference value** (`barcodeCode`) with a brief confirmation. There
-  is no network call and nothing else on the form is auto-filled.
+  is no network call and nothing else on the form is auto-filled — so
+  there's no "no match found" dead-end state to design around either; every
+  scan is treated the same way, as a value to pre-fill for your own
+  reference while you fill in the rest manually.
 - `barcodeCode` is included in the Inventory List's search box, so you can
   always answer "have I already logged this exact barcode?" fully offline.
-- Manual entry is the one, fully-supported path for every other field. To
-  keep it fast, **Series/Franchise** and **Tags** both get local, offline
-  autocomplete (`itemsRepository.suggestSeriesFranchise` /
+- Manual entry is the one, fully-supported path for every other field, and
+  works completely without ever touching the scan feature — the Add/Edit
+  Item form always leads with **Photo** (with optional background removal),
+  then Barcode as a secondary, skippable section, then the manual fields.
+  To keep manual entry fast, **Series/Franchise** and **Tags** both get
+  local, offline autocomplete (`itemsRepository.suggestSeriesFranchise` /
   `.suggestTags`) drawn from your own previously-entered values — no new
   tables, no network, just a `LIKE` query (and a small in-memory dedupe for
   tags) against rows already in SQLite.
 
 ## Known limitations (MVP scope)
 
-- Most Environment artwork is still solid-color placeholders
-  (`backgroundColor` on each `Environment`, `backgroundVariants: []`).
-  "Classic Binder Page", "Green Binder Page", "Lavender Binder Page", and
-  "Classic Shelf" have real bundled art as the first examples of the
-  pattern — every screen that shows an Environment (Shelf View, Skin
-  Locker, Group List thumbnail, Gacha reveal card) already prefers a
-  matching `backgroundVariants` entry over the solid color when one
-  exists. To add art for another starter Environment: drop an image in
-  `assets/environments/` and pass it through `uniformVariantsFromImage(...)`
-  in `src/shared/db/seedEnvironments.ts` (see the existing
-  `*_VARIANTS` constants) — `migrate.ts`'s `syncStarterEnvironmentsIfNeeded`
-  pushes it out to already-seeded installs automatically on next launch, no
-  separate migration needed. See "Shelf-anchored backgrounds" above for how
-  to give a piece of art real per-row-count `shelfAnchorY` positions instead
-  of the uniform default.
-# otaku-shelf
+- **Background removal is written but not yet verified on a real device**
+  — see "Status: written, not yet verified on-device" under "Background
+  removal" above. Requires a fresh native build before it does anything.
+- **Ads use Google's test ids everywhere** (App IDs in `app.json`, ad unit
+  id in `src/shared/services/ads.ts`) — see "Ad monetization" above for
+  what to swap before a store submission.
+- **Android's on-device background removal is capped at API 35** due to an
+  unpatched crash in the only available ML Kit Subject Segmentation release
+  — see "Android version cap, and why" above. It's simply unavailable
+  (never attempted, never crashes) on Android 16+ until that's fixed.
+- Cloud-based/premium background removal, and rewarded ads to unlock it (or
+  a future export feature), are explicitly **future work** — see "Phase 2"
+  under "Ad monetization" above. Nothing for either exists yet, by design.

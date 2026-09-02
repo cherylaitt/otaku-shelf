@@ -8,7 +8,7 @@ import { RootNavigator } from './src/navigation/RootNavigator';
 import { initDatabase } from './src/shared/db/migrate';
 import { useGroupsStore } from './src/features/groups/store/useGroupsStore';
 import { useItemsStore } from './src/features/items/store/useItemsStore';
-import { useEnvironmentsStore } from './src/shared/store/useEnvironmentsStore';
+import { initializeAds } from './src/shared/services/ads';
 import { colors } from './src/shared/theme/theme';
 
 const navigationTheme: Theme = {
@@ -31,8 +31,11 @@ export default function App() {
     initDatabase();
     useGroupsStore.getState().refresh();
     useItemsStore.getState().refresh();
-    useEnvironmentsStore.getState().refresh();
     setReady(true);
+    // Ads aren't on the critical startup path (only the Inventory tab shows
+    // one) — fire-and-forget so a slow ATT prompt/SDK init never delays the
+    // very first screen the user sees.
+    initializeAds();
   }, []);
 
   if (!ready) {

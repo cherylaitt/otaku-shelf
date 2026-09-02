@@ -6,13 +6,11 @@ import { Button } from '../../../shared/components/Button';
 import { resetAllData } from '../../../shared/db/client';
 import { useGroupsStore } from '../../groups/store/useGroupsStore';
 import { useItemsStore } from '../../items/store/useItemsStore';
-import { useEnvironmentsStore } from '../../../shared/store/useEnvironmentsStore';
 import { colors, radius, spacing, typography } from '../../../shared/theme/theme';
 
 export function SettingsScreen() {
   const refreshGroups = useGroupsStore((s) => s.refresh);
   const refreshItems = useItemsStore((s) => s.refresh);
-  const refreshEnvironments = useEnvironmentsStore((s) => s.refresh);
 
   // expo-updates: `checkAutomatically` (default ON_LOAD) already checks on
   // every launch and downloads silently in the background — this button is
@@ -49,28 +47,19 @@ export function SettingsScreen() {
   };
 
   const handleReset = () => {
-    Alert.alert(
-      'Reset All Data',
-      'This permanently deletes every group, item, and gacha history entry. Your unlocked environment catalog will also reset. This cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Reset Everything',
-          style: 'destructive',
-          onPress: () => {
-            resetAllData();
-            // Re-seed the starter catalog so the app isn't left with zero environments.
-            import('../../../shared/db/migrate').then(({ initDatabase }) => {
-              initDatabase();
-              refreshGroups();
-              refreshItems();
-              refreshEnvironments();
-              Alert.alert('Done', 'All local data has been reset.');
-            });
-          },
+    Alert.alert('Reset All Data', 'This permanently deletes every group and item. This cannot be undone.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Reset Everything',
+        style: 'destructive',
+        onPress: () => {
+          resetAllData();
+          refreshGroups();
+          refreshItems();
+          Alert.alert('Done', 'All local data has been reset.');
         },
-      ]
-    );
+      },
+    ]);
   };
 
   return (
@@ -110,10 +99,10 @@ export function SettingsScreen() {
 
       <View style={styles.section}>
         <Text style={styles.sectionLabel}>About</Text>
-        <Text style={styles.sectionBody}>Otaku Shelf v1.0.0</Text>
+        <Text style={styles.sectionBody}>Otaku Shelf v1.1.0</Text>
         <Text style={styles.sectionBody}>
-          Ads are mocked for this MVP via MockAdService (see src/shared/services/adService.ts) — swap in a real ad
-          SDK there without touching any screen code.
+          Shows a small banner ad on the Inventory tab only (see src/shared/services/ads.ts) — currently serving
+          Google's test creative until a real AdMob ad unit id is configured there.
         </Text>
       </View>
     </ScreenContainer>

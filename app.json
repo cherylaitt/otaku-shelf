@@ -2,7 +2,7 @@
   "expo": {
     "name": "otaku-shelf",
     "slug": "otaku-shelf",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -12,7 +12,7 @@
     },
     "android": {
       "package": "com.chery.laitt.otakushelf",
-      "versionCode": 2,
+      "versionCode": 3,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -44,7 +44,30 @@
         {
           "cameraPermission": "Otaku Shelf uses your camera to scan barcodes when adding items."
         }
-      ]
+      ],
+      [
+        "react-native-google-mobile-ads",
+        {
+          "// TODO": "Replace both App IDs with your own from the AdMob console before submitting to the stores — these are Google's published TEST App IDs and only serve test ads.",
+          "androidAppId": "ca-app-pub-3940256099942544~3347511713",
+          "iosAppId": "ca-app-pub-3940256099942544~1458002511"
+        }
+      ],
+      [
+        "expo-tracking-transparency",
+        {
+          "userTrackingPermission": "Otaku Shelf uses this to show more relevant ads. You can still use every feature of the app if you decline."
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "useFrameworks": "static"
+          }
+        }
+      ],
+      "./plugins/withMlkitVisionDependenciesMerge"
     ],
     "extra": {
       "eas": {

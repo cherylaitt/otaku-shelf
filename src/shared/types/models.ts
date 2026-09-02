@@ -1,9 +1,11 @@
 /**
  * Core domain types for Otaku Shelf.
  *
- * The category system is the backbone of the app: every Group, Environment,
- * and (indirectly, via its parent Group) Item belongs to exactly one of the
- * two categories below. See README.md for the full rationale.
+ * The category system is the backbone of the app: every Group, and
+ * (indirectly, via its parent Group) Item belongs to exactly one of the two
+ * categories below — which also determines which of the two fixed shelf
+ * backgrounds it gets (see `shared/config/shelfBackgrounds.ts`). See
+ * README.md for the full rationale.
  */
 
 export type Category = 'paper' | 'figure';
@@ -82,66 +84,25 @@ export interface Group {
    */
   rows: number;
   columns: number;
-  activeEnvironmentId: string | null;
   createdAt: number;
 }
 
-export type DisplayKind = 'card-holder' | 'shelf' | 'drawer';
-
-export const DISPLAY_KIND_LABELS: Record<DisplayKind, string> = {
-  'card-holder': 'Card Holder',
-  shelf: 'Shelf',
-  drawer: 'Drawer',
-};
-
-export type Rarity = 'common' | 'rare' | 'epic' | 'legendary';
-
-export const RARITY_ORDER: Rarity[] = ['common', 'rare', 'epic', 'legendary'];
-
-export const RARITY_LABELS: Record<Rarity, string> = {
-  common: 'Common',
-  rare: 'Rare',
-  epic: 'Epic',
-  legendary: 'Legendary',
-};
-
-export const RARITY_WEIGHTS: Record<Rarity, number> = {
-  common: 60,
-  rare: 28,
-  epic: 10,
-  legendary: 2,
-};
-
-export const RARITY_COLORS: Record<Rarity, string> = {
-  common: '#8A8F9C',
-  rare: '#3E8EDE',
-  epic: '#A85CE0',
-  legendary: '#E0A63E',
-};
-
 /**
- * One background asset for an Environment. Meaning depends on the parent
- * Environment's `category` — see `resolveShelfBackground` in
- * `shared/utils/shelfBackground.ts` for the authoritative behavior:
+ * One baked-in shelf-art asset, keyed by row-count preset. Only meaningful
+ * for **figure** groups — see `shared/config/shelfBackgrounds.ts` and
+ * `resolveShelfBackground` in `shared/utils/shelfBackground.ts`.
  *
- * - For a **figure** Environment (baked-in shelf art), this is ONE of
- *   several entries — one per row-count preset (`GRID_ROW_PRESETS`) — since
- *   a shelf's row count is a fixed, user-chosen grid dimension (see
- *   `Group.rows`) and the art itself is authored per preset: a 3-row shelf
- *   image has its shelf boards drawn in different, non-uniform positions
- *   than the 5-row version of the same shelf, rather than one image
- *   stretched across however many rows happen to be showing. `rows` and
- *   `shelfAnchorY` are both meaningful and hand-authored per image.
- * - For a **paper** Environment (a continuous texture with no physical
- *   shelves — a binder page, a con-booth backdrop, etc.), there is exactly
- *   ONE entry in `Environment.backgroundVariants`, used unconditionally
- *   regardless of the group's row count. Its `rows`/`shelfAnchorY` fields
- *   are unused placeholders — see `singleTexturePaperBackground` in
- *   `seedEnvironments.ts` — rows are always evenly divided by app code
- *   instead, exactly as they were before this variant system existed.
+ * There is exactly one background per goods category now (no user-facing
+ * style choice — see README "Backgrounds are fixed per category"), but a
+ * **figure** background still ships one full variant PER supported
+ * row-count preset (3/4/5 — see `GRID_ROW_PRESETS`), because resizing a
+ * figure group's rows swaps the entire baked-in shelf-art asset (image +
+ * anchors together) rather than stretching one picture — real shelf
+ * photography/renders have uneven gaps (a shorter top compartment is
+ * typical), so these are never evenly spaced by default.
  */
 export interface ShelfBackgroundVariant {
-  /** Which row-count preset this asset + anchors were authored for. Meaningful for `figure` only — see the type doc above. */
+  /** Which row-count preset this asset + anchors were authored for. */
   rows: number;
   imageUri: string;
   /**
@@ -161,29 +122,8 @@ export interface ShelfBackgroundVariant {
    * often shorter than the middle ones) — they must be measured by hand
    * from each generated image. Items are positioned with their BOTTOM edge
    * resting here, instead of dividing the available height evenly.
-   * Meaningful for `figure` only — see the type doc above.
    */
   shelfAnchorY: number[];
-}
-
-export interface Environment {
-  id: string;
-  name: string;
-  backgroundColor: string;
-  category: Category;
-  displayKind: DisplayKind;
-  rarity: Rarity;
-  isUnlocked: boolean;
-  unlockedAt: number | null;
-  /**
-   * Background art. Empty array means no bundled art for this environment
-   * at all — `backgroundColor` alone is shown, with rows evenly spaced.
-   * Otherwise: for `figure`, per-row-count variants that get fully swapped
-   * on resize; for `paper`, exactly one continuous-texture entry used
-   * regardless of row count. See `ShelfBackgroundVariant` and
-   * `resolveShelfBackground`.
-   */
-  backgroundVariants: ShelfBackgroundVariant[];
 }
 
 export type ItemStatus = 'owned' | 'wishlist' | 'sold' | 'on-order';
@@ -214,14 +154,6 @@ export interface Item {
   barcodeCode: string | null;
   createdAt: number;
   updatedAt: number;
-}
-
-export interface GachaPullLog {
-  id: string;
-  timestamp: number;
-  category: Category;
-  resultEnvironmentId: string;
-  wasNewUnlock: boolean;
 }
 
 /** Thrown by the data-access layer when a category-integrity rule is violated. */

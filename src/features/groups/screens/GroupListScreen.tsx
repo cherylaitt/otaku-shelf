@@ -4,7 +4,6 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../../navigation/types';
 import { useGroupsStore } from '../store/useGroupsStore';
-import { useEnvironmentsStore } from '../../../shared/store/useEnvironmentsStore';
 import { useItemsStore } from '../../items/store/useItemsStore';
 import { ScreenContainer } from '../../../shared/components/ScreenContainer';
 import { CategoryPill } from '../../../shared/components/CategoryPill';
@@ -13,6 +12,7 @@ import { Button } from '../../../shared/components/Button';
 import { colors, radius, spacing, typography } from '../../../shared/theme/theme';
 import { Group } from '../../../shared/types/models';
 import { resolveShelfBackground } from '../../../shared/utils/shelfBackground';
+import { BACKGROUND_COLOR_BY_CATEGORY } from '../../../shared/config/shelfBackgrounds';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -21,17 +21,14 @@ export function GroupListScreen() {
   const groups = useGroupsStore((s) => s.groups);
   const refreshGroups = useGroupsStore((s) => s.refresh);
   const deleteGroup = useGroupsStore((s) => s.deleteGroup);
-  const environments = useEnvironmentsStore((s) => s.environments);
-  const refreshEnvironments = useEnvironmentsStore((s) => s.refresh);
   const items = useItemsStore((s) => s.items);
   const refreshItems = useItemsStore((s) => s.refresh);
 
   useFocusEffect(
     useCallback(() => {
       refreshGroups();
-      refreshEnvironments();
       refreshItems();
-    }, [refreshGroups, refreshEnvironments, refreshItems])
+    }, [refreshGroups, refreshItems])
   );
 
   const handleDelete = (group: Group) => {
@@ -69,18 +66,17 @@ export function GroupListScreen() {
           keyExtractor={(g) => g.id}
           contentContainerStyle={styles.list}
           renderItem={({ item: group }) => {
-            const env = environments.find((e) => e.id === group.activeEnvironmentId);
             const ownedCount = items.filter((i) => i.groupId === group.id && i.status === 'owned').length;
             // Match this specific group's row count so a resize is
             // reflected here too, not just on the Shelf View itself.
-            const preview = resolveShelfBackground(env, group.rows);
+            const preview = resolveShelfBackground(group.category, group.rows);
             return (
               <Pressable
                 style={styles.card}
                 onPress={() => navigation.navigate('ShelfView', { groupId: group.id })}
                 onLongPress={() => handleDelete(group)}
               >
-                <View style={[styles.thumb, { backgroundColor: env?.backgroundColor ?? colors.slotEmpty }]}>
+                <View style={[styles.thumb, { backgroundColor: BACKGROUND_COLOR_BY_CATEGORY[group.category] ?? colors.slotEmpty }]}>
                   {preview.imageUri ? (
                     <Image source={{ uri: preview.imageUri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
                   ) : null}
