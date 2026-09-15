@@ -3,6 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RootStackParamList } from '../../../navigation/types';
 import { ScreenContainer } from '../../../shared/components/ScreenContainer';
 import { Button } from '../../../shared/components/Button';
@@ -20,6 +21,7 @@ const SCAN_CONFIRMATION_MS = 700;
 
 export function BarcodeScannerScreen() {
   const navigation = useNavigation<Nav>();
+  const insets = useSafeAreaInsets();
   const [permission, requestPermission] = useCameraPermissions();
   const setScan = useBarcodeScanStore((s) => s.setScan);
   const hasHandledScan = useRef(false);
@@ -73,7 +75,7 @@ export function BarcodeScannerScreen() {
           <Text style={styles.hint}>Align the barcode within the frame</Text>
         )}
       </View>
-      <View style={styles.footer}>
+      <View style={[styles.footer, { bottom: spacing.xl + insets.bottom }]}>
         <Button label="Cancel" variant="secondary" onPress={() => navigation.goBack()} fullWidth />
       </View>
     </ScreenContainer>

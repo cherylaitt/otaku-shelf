@@ -23,6 +23,7 @@ import { Alert, Image, Platform, Pressable, ScrollView, StyleSheet, Text, View }
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { RootStackParamList } from '../../../navigation/types';
 import { useGroupsStore } from '../../groups/store/useGroupsStore';
@@ -49,6 +50,7 @@ type Route = RouteProp<RootStackParamList, 'AddEditItem'>;
 export function AddEditItemScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
+  const insets = useSafeAreaInsets();
   const { groupId, itemId, presetSlot } = route.params;
 
   const group = useGroupsStore((s) => s.getGroupById(groupId));
@@ -235,7 +237,10 @@ export function AddEditItemScreen() {
 
   return (
     <ScreenContainer>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingBottom: spacing.xxl + insets.bottom }]}
+        keyboardShouldPersistTaps="handled"
+      >
         <ItemTypePicker category={group.category} value={itemType} onChange={setItemType} />
 
         <View style={styles.photoSection}>
