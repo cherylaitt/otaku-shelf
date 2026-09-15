@@ -3,6 +3,7 @@ import { ScrollView, StyleSheet, Text } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RootStackParamList } from '../../../navigation/types';
 import { useGroupsStore } from '../store/useGroupsStore';
 import { useItemsStore } from '../../items/store/useItemsStore';
@@ -30,6 +31,7 @@ type Route = RouteProp<RootStackParamList, 'ResizeGroupLayout'>;
 export function ResizeGroupLayoutScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
+  const insets = useSafeAreaInsets();
   const { groupId } = route.params;
 
   const group = useGroupsStore((s) => s.getGroupById(groupId));
@@ -67,7 +69,7 @@ export function ResizeGroupLayoutScreen() {
 
   return (
     <ScreenContainer>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: spacing.xxl + insets.bottom }]}>
         <Text style={styles.title}>Resize {group.name}</Text>
         <Text style={styles.subtitle}>
           Changes here only affect this group. {placedCount} card{placedCount === 1 ? '' : 's'} currently on display

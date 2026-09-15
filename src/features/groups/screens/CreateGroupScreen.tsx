@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RootStackParamList } from '../../../navigation/types';
 import { useGroupsStore } from '../store/useGroupsStore';
 import { ScreenContainer } from '../../../shared/components/ScreenContainer';
@@ -25,6 +26,7 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 export function CreateGroupScreen() {
   const navigation = useNavigation<Nav>();
+  const insets = useSafeAreaInsets();
   const createGroup = useGroupsStore((s) => s.createGroup);
 
   const [name, setName] = useState('');
@@ -50,7 +52,10 @@ export function CreateGroupScreen() {
 
   return (
     <ScreenContainer>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingBottom: spacing.xxl + insets.bottom }]}
+        keyboardShouldPersistTaps="handled"
+      >
         <Text style={styles.title}>New Group</Text>
         <Text style={styles.subtitle}>
           Groups are permanent collections. Category can&apos;t be changed after creation.

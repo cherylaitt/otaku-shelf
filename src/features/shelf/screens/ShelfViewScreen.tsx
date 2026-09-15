@@ -15,6 +15,7 @@ import {
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RootStackParamList } from '../../../navigation/types';
 import { useGroupsStore } from '../../groups/store/useGroupsStore';
 import { useItemsStore } from '../../items/store/useItemsStore';
@@ -34,6 +35,7 @@ type Route = RouteProp<RootStackParamList, 'ShelfView'>;
 export function ShelfViewScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
+  const insets = useSafeAreaInsets();
   const { groupId } = route.params;
 
   const group = useGroupsStore((s) => s.getGroupById(groupId));
@@ -226,7 +228,7 @@ export function ShelfViewScreen() {
         </View>
       ) : null}
 
-      <View style={styles.footerRow}>
+      <View style={[styles.footerRow, { paddingBottom: spacing.lg + insets.bottom }]}>
         <Text style={styles.footerHint}>
           {groupItems.length} placed · {unplacedOwned.length} owned & unplaced
         </Text>
